@@ -1,227 +1,306 @@
 # ============================================================
 #              WINDOWS & OFFICE LICENSE CHECKER
-#                    Maruchi Edition
 # ============================================================
 
-$Host.UI.RawUI.WindowTitle = "Windows & Office License Checker"
+$ErrorActionPreference = "SilentlyContinue"
 
-function Write-Line {
-    param([string]$Text = "", [ConsoleColor]$Color = [ConsoleColor]::White)
-    Write-Host $Text -ForegroundColor $Color
-}
-
-function Show-Header {
+function Header {
     Clear-Host
-    Write-Line ""
-    Write-Line "==================================================" Cyan
-    Write-Line "          WINDOWS & OFFICE LICENSE CHECKER        " Cyan
-    Write-Line "==================================================" Cyan
-    Write-Line ""
+
+    Write-Host ""
+    Write-Host "==================================================" -ForegroundColor Cyan
+    Write-Host "          WINDOWS & OFFICE LICENSE CHECKER" -ForegroundColor Cyan
+    Write-Host "==================================================" -ForegroundColor Cyan
+    Write-Host ""
 }
 
-function Get-WindowsLicense {
+function Pause-Menu {
+    Write-Host ""
+    Read-Host "Nhan Enter de quay lai"
+}
 
-    Show-Header
+# ============================================================
+# WINDOWS
+# ============================================================
 
-    Write-Line "[ Windows License ]" Yellow
-    Write-Line ""
+function Check-Windows {
 
-    $products = Get-CimInstance SoftwareLicensingProduct |
+    Header
+
+    Write-Host "[ WINDOWS LICENSE ]" -ForegroundColor Yellow
+    Write-Host ""
+
+    $windows = Get-CimInstance SoftwareLicensingProduct |
         Where-Object {
             $_.ApplicationID -eq "55c92734-d682-4d71-983e-d6ec3f16059f" -and
             $_.PartialProductKey
         }
 
-    if (-not $products) {
-        Write-Line "Khong tim thay thong tin license Windows." Red
+    if (-not $windows) {
+        Write-Host "Khong tim thay thong tin license Windows." -ForegroundColor Red
+        Pause-Menu
         return
     }
 
-    foreach ($product in $products) {
+    foreach ($item in $windows) {
 
-        Write-Line "Product : $($product.Name)"
+        Write-Host "Windows : $($item.Name)"
+        Write-Host "Key     : XXXXX-$($item.PartialProductKey)"
 
-        switch ($product.LicenseStatus) {
-
-            0 {
-                Write-Line "Status  : NOT LICENSED" Red
-            }
+        switch ($item.LicenseStatus) {
 
             1 {
-                Write-Line "Status  : LICENSED" Green
+                Write-Host "Status  : ACTIVATED" -ForegroundColor Green
+            }
+
+            0 {
+                Write-Host "Status  : NOT ACTIVATED" -ForegroundColor Red
             }
 
             2 {
-                Write-Line "Status  : OOB GRACE" Yellow
+                Write-Host "Status  : OOB GRACE" -ForegroundColor Yellow
             }
 
             3 {
-                Write-Line "Status  : OOT GRACE" Yellow
+                Write-Host "Status  : OOT GRACE" -ForegroundColor Yellow
             }
 
             4 {
-                Write-Line "Status  : NON-GENUINE GRACE" Red
+                Write-Host "Status  : NON-GENUINE GRACE" -ForegroundColor Red
             }
 
             5 {
-                Write-Line "Status  : NOTIFICATION" Yellow
+                Write-Host "Status  : NOTIFICATION" -ForegroundColor Yellow
             }
 
             6 {
-                Write-Line "Status  : EXTENDED GRACE" Yellow
+                Write-Host "Status  : EXTENDED GRACE" -ForegroundColor Yellow
             }
 
             default {
-                Write-Line "Status  : UNKNOWN ($($product.LicenseStatus))" Red
+                Write-Host "Status  : UNKNOWN" -ForegroundColor Red
             }
         }
 
-        Write-Line "Key     : XXXXX-$($product.PartialProductKey)"
-        Write-Line ""
+        Write-Host ""
     }
+
+    # Thêm thông tin slmgr /xpr
+    Write-Host "Activation expiration:" -ForegroundColor Yellow
+    cscript.exe //nologo "$env:windir\System32\slmgr.vbs" /xpr
+
+    Pause-Menu
 }
 
-function Get-OfficePaths {
+# ============================================================
+# OFFICE
+# ============================================================
 
-    $paths = @()
+function Find-Office {
 
-    $paths += "$env:ProgramFiles\Microsoft Office\Office16"
-    $paths += "${env:ProgramFiles(x86)}\Microsoft Office\Office16"
+    $possiblePaths = @(
+        "$env:ProgramFiles\Microsoft Office\Office16",
+        "$env:ProgramFiles\Microsoft Office\root\Office16",
+        "${env:ProgramFiles(x86)}\Microsoft Office\Office16",
+        "${env:ProgramFiles(x86)}\Microsoft Office\root\Office16"
+    )
 
-    $paths += "$env:ProgramFiles\Microsoft Office\root\Office16"
-    $paths += "${env:ProgramFiles(x86)}\Microsoft Office\root\Office16"
-
-    return $paths | Where-Object {
-        $_ -and (Test-Path "$_\OSPP.VBS")
-    }
-}
-
-function Get-OfficeLicense {
-
-    Show-Header
-
-    Write-Line "[ Microsoft Office License ]" Yellow
-    Write-Line ""
-
-    $officePaths = Get-OfficePaths
-
-    if (-not $officePaths) {
-        Write-Line "Khong tim thay OSPP.VBS cua Microsoft Office." Red
-        Write-Line ""
-        Write-Line "Co the Office khong duoc cai dat theo kieu Volume/MSI." DarkGray
-        return
-    }
-
-    foreach ($path in $officePaths) {
+    foreach ($path in $possiblePaths) {
 
         $ospp = Join-Path $path "OSPP.VBS"
 
-        Write-Line "Checking: $path" Cyan
-        Write-Line ""
+        if (Test-Path $ospp) {
+            return $ospp
+        }
+    }
 
-        $result = & cscript.exe //nologo $ospp /dstatus 2>$null
+    return $null
+}
 
-        if (-not $result) {
-            Write-Line "Khong lay duoc thong tin license." Red
-            continue
+function Check-Office {
+
+    Header
+
+    Write-Host "[ MICROSOFT OFFICE LICENSE ]" -ForegroundColor Yellow
+    Write-Host ""
+
+    $ospp = Find-Office
+
+    if (-not $ospp) {
+
+        Write-Host "Khong tim thay Microsoft Office." -ForegroundColor Red
+        Write-Host ""
+        Write-Host "Tool hien tai ho tro Office co OSPP.VBS." -ForegroundColor DarkGray
+
+        Pause-Menu
+        return
+    }
+
+    Write-Host "Office found:" -ForegroundColor Cyan
+    Write-Host $ospp
+    Write-Host ""
+
+    $result = cscript.exe //nologo $ospp /dstatus 2>$null
+
+    $products = @()
+
+    $licenseName = ""
+    $licenseStatus = ""
+    $lastFive = ""
+
+    foreach ($line in $result) {
+
+        if ($line -match "LICENSE NAME:\s*(.+)") {
+            $licenseName = $matches[1].Trim()
         }
 
-        $licenseLines = $result | Where-Object {
-            $_ -match "LICENSE STATUS|LICENSED|UNLICENSED|Last 5 characters|LICENSE NAME"
+        if ($line -match "LICENSE STATUS:\s*(.+)") {
+            $licenseStatus = $matches[1].Trim()
         }
 
-        foreach ($line in $licenseLines) {
+        if ($line -match "Last 5 characters.*:\s*(.+)") {
+            $lastFive = $matches[1].Trim()
+        }
 
-            if ($line -match "LICENSE STATUS:\s*(.*)") {
+        if ($line -match "LICENSE STATUS") {
 
+            Write-Host "Product : $licenseName"
+
+            if ($licenseStatus -match "LICENSED") {
+                Write-Host "Status  : ACTIVATED" -ForegroundColor Green
+            }
+            elseif ($licenseStatus -match "UNLICENSED") {
+                Write-Host "Status  : NOT ACTIVATED" -ForegroundColor Red
+            }
+            else {
+                Write-Host "Status  : $licenseStatus" -ForegroundColor Yellow
+            }
+
+            if ($lastFive) {
+                Write-Host "Key     : XXXXX-$lastFive"
+            }
+
+            Write-Host ""
+        }
+    }
+
+    Pause-Menu
+}
+
+# ============================================================
+# BOTH
+# ============================================================
+
+function Check-Both {
+
+    Header
+
+    Write-Host "[ WINDOWS ]" -ForegroundColor Cyan
+    Write-Host ""
+
+    $windows = Get-CimInstance SoftwareLicensingProduct |
+        Where-Object {
+            $_.ApplicationID -eq "55c92734-d682-4d71-983e-d6ec3f16059f" -and
+            $_.PartialProductKey
+        }
+
+    foreach ($item in $windows) {
+
+        Write-Host "Windows : $($item.Name)"
+
+        if ($item.LicenseStatus -eq 1) {
+            Write-Host "Status  : ACTIVATED" -ForegroundColor Green
+        }
+        else {
+            Write-Host "Status  : NOT ACTIVATED" -ForegroundColor Red
+        }
+
+        Write-Host ""
+    }
+
+    Write-Host "--------------------------------------------------"
+    Write-Host ""
+
+    Write-Host "[ OFFICE ]" -ForegroundColor Cyan
+    Write-Host ""
+
+    $ospp = Find-Office
+
+    if (-not $ospp) {
+
+        Write-Host "Office : NOT FOUND" -ForegroundColor Red
+
+    }
+    else {
+
+        $result = cscript.exe //nologo $ospp /dstatus 2>$null
+
+        $found = $false
+
+        foreach ($line in $result) {
+
+            if ($line -match "LICENSE STATUS:\s*(.+)") {
+
+                $found = $true
                 $status = $matches[1].Trim()
 
                 if ($status -match "LICENSED") {
-                    Write-Line "Status  : LICENSED" Green
-                }
-                elseif ($status -match "UNLICENSED") {
-                    Write-Line "Status  : NOT LICENSED" Red
+                    Write-Host "Office  : ACTIVATED" -ForegroundColor Green
                 }
                 else {
-                    Write-Line "Status  : $status" Yellow
+                    Write-Host "Office  : NOT ACTIVATED" -ForegroundColor Red
                 }
-
-                continue
-            }
-
-            if ($line -match "LICENSE NAME:\s*(.*)") {
-                Write-Line "Product : $($matches[1].Trim())"
-                continue
-            }
-
-            if ($line -match "Last 5 characters.*:\s*(.*)") {
-                Write-Line "Key     : XXXXX-$($matches[1].Trim())"
-                continue
             }
         }
 
-        Write-Line ""
+        if (-not $found) {
+            Write-Host "Office : Khong lay duoc trang thai" -ForegroundColor Yellow
+        }
     }
+
+    Pause-Menu
 }
 
-function Show-Menu {
+# ============================================================
+# MENU
+# ============================================================
 
-    while ($true) {
+while ($true) {
 
-        Show-Header
+    Header
 
-        Write-Line "[1] Check Windows License" Green
-        Write-Line "[2] Check Microsoft Office License" Green
-        Write-Line "[3] Check Both" Green
-        Write-Line "[0] Exit" Gray
+    Write-Host "[1] Check Windows License" -ForegroundColor Green
+    Write-Host "[2] Check Office License" -ForegroundColor Green
+    Write-Host "[3] Check Windows + Office" -ForegroundColor Green
+    Write-Host "[0] Exit" -ForegroundColor Gray
 
-        Write-Line ""
-        $choice = Read-Host "Lua chon"
+    Write-Host ""
 
-        switch ($choice) {
+    $choice = Read-Host "Lua chon"
 
-            "1" {
-                Get-WindowsLicense
-                Write-Line ""
-                Read-Host "Nhan Enter de quay lai menu"
-            }
+    switch ($choice) {
 
-            "2" {
-                Get-OfficeLicense
-                Write-Line ""
-                Read-Host "Nhan Enter de quay lai menu"
-            }
+        "1" {
+            Check-Windows
+        }
 
-            "3" {
-                Get-WindowsLicense
+        "2" {
+            Check-Office
+        }
 
-                Write-Line ""
-                Write-Line "--------------------------------------------------" DarkGray
-                Write-Line ""
+        "3" {
+            Check-Both
+        }
 
-                Get-OfficeLicense
+        "0" {
+            Clear-Host
+            exit
+        }
 
-                Write-Line ""
-                Read-Host "Nhan Enter de quay lai menu"
-            }
-
-            "0" {
-                Clear-Host
-                Write-Line "Cam on ban da su dung License Checker!" Cyan
-                exit
-            }
-
-            default {
-                Write-Line ""
-                Write-Line "Lua chon khong hop le!" Red
-                Start-Sleep -Seconds 1
-            }
+        default {
+            Write-Host ""
+            Write-Host "Lua chon khong hop le!" -ForegroundColor Red
+            Start-Sleep 1
         }
     }
 }
-
-# ============================================================
-# START
-# ============================================================
-
-Show-Menu
